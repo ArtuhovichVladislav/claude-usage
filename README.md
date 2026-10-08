@@ -2,6 +2,8 @@
 
 A tiny macOS menu bar app that shows your Claude plan usage — the same numbers as the usage panel in the Claude Code VS Code extension.
 
+<p align="center"><img src="screenshot.png" width="360" alt="Claude Usage popover"></p>
+
 - **Menu bar:** a gauge icon and the most loaded limit, e.g. `11% · 6d` (percent · time until reset)
 - **Popover:** 5-hour limit, weekly limit for all models, per-model weekly limits (e.g. Fable) and extra usage, each with a progress bar
 - **Notifications** when a limit crosses 80% and 95% (once per limit window)
@@ -43,6 +45,7 @@ The token is read via `/usr/bin/security`, is never written anywhere and is sent
 | `build.sh` | Compiles with `swiftc` and assembles `ClaudeUsage.app` |
 | `make_icon.swift` | Draws the app icon; run `swift make_icon.swift && iconutil -c icns AppIcon.iconset` to regenerate `AppIcon.icns` |
 | `AppIcon.icns` | App icon |
+| `tools/snapshot.swift` | Renders `screenshot.png` with sample data (build command at the top of the file) |
 
 ## Disclaimer
 

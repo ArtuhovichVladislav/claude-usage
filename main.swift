@@ -123,6 +123,7 @@ final class Store: ObservableObject {
     static let thresholds = [95, 80]
 
     init() {
+        #if !SNAPSHOT // tools/snapshot.swift fills the store with sample data instead
         let center = UNUserNotificationCenter.current()
         center.delegate = NotificationDelegate.shared
         center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
@@ -146,6 +147,7 @@ final class Store: ObservableObject {
                 }
             },
         ]
+        #endif
     }
 
     /// The most loaded limit — shown in the menu bar.
@@ -393,6 +395,7 @@ struct ContentView: View {
     }
 }
 
+#if !SNAPSHOT
 @main
 struct ClaudeUsageApp: App {
     @StateObject private var store = Store()
@@ -409,3 +412,4 @@ struct ClaudeUsageApp: App {
         .menuBarExtraStyle(.window)
     }
 }
+#endif

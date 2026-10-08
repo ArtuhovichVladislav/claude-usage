@@ -103,7 +103,7 @@ final class Store: ObservableObject {
     @Published var updated: Date?
     @Published var launchAtLogin = SMAppService.mainApp.status == .enabled
     private var timers: [Timer] = []
-    private var isLoading = false
+    @Published private(set) var isLoading = false
 
     // Persisted so that relaunching the app does not bypass throttling
     private let defaults = UserDefaults.standard
@@ -165,21 +165,29 @@ final class Store: ObservableObject {
         return "gauge.with.dots.needle.\(step)percent"
     }
 
+    /// Whether the Refresh button would actually make a request right now.
+    var canRefresh: Bool {
+        let blockedUntil = [updated?.addingTimeInterval(60), lastFetch?.addingTimeInterval(60), pausedUntil]
+            .compactMap { $0 }.max()
+        return !isLoading && (blockedUntil ?? .distantPast) <= Date()
+    }
+
     /// Primary source is Claude Code's own cache in ~/.claude.json — no requests at all.
-    /// The API is called only when that data is older than 10 min, at most every 5 min,
-    /// and never during a 429 backoff pause.
-    func refresh() {
+    /// The API is called only when that data is stale (10 min, or 1 min for the Refresh button),
+    /// at most every 5 min (1 min for the button), and never during a 429 backoff pause.
+    func refresh(manual: Bool = false) {
         if let (usage, date) = readClaudeCodeCache(), date > (updated ?? .distantPast) {
             apply(usage, at: date)
         }
         let now = Date()
-        if let updated, now.timeIntervalSince(updated) < 600 { return }
+        let interval: TimeInterval = manual ? 60 : 300
+        if let updated, now.timeIntervalSince(updated) < (manual ? 60 : 600) { return }
         if isLoading { return }
         if let pausedUntil, now < pausedUntil {
             error = pauseMessage(pausedUntil)
             return
         }
-        if let lastFetch, now.timeIntervalSince(lastFetch) < 300 { return }
+        if let lastFetch, now.timeIntervalSince(lastFetch) < interval { return }
         isLoading = true
         lastFetch = now
         Task {
@@ -382,7 +390,11 @@ struct ContentView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button(L("Refresh", "Обновить")) { store.refresh() }
+                // Re-check every second so the button re-enables as soon as a request is allowed
+                TimelineView(.periodic(from: .now, by: 1)) { _ in
+                    Button(L("Refresh", "Обновить")) { store.refresh(manual: true) }
+                        .disabled(!store.canRefresh)
+                }
                 Button(L("Quit", "Выйти")) { NSApp.terminate(nil) }
             }
         }

@@ -50,17 +50,3 @@ The token is read via `/usr/bin/security`, is never written anywhere and is sent
 ## Disclaimer
 
 Unofficial project, not affiliated with Anthropic. It relies on an undocumented endpoint and on Claude Code's internal cache format, both of which may change without notice.
-
----
-
-## По-русски
-
-Маленькое приложение для строки меню macOS, которое показывает использование лимитов Claude — те же цифры, что в панели расширения Claude Code для VS Code.
-
-- В строке меню — иконка и самый загруженный лимит, например `11% · 6д`.
-- По клику — лимит на 5 часов, недельные лимиты, доп. использование.
-- Уведомления при 80% и 95%, автозапуск при входе, русский и английский интерфейс.
-
-**Сборка:** `./build.sh`, затем `cp -R ClaudeUsage.app /Applications/`.
-
-Данные берутся из кэша Claude Code в `~/.claude.json`, без сетевых запросов. Если кэш старше 10 минут, приложение запрашивает API статистики, но не чаще раза в 5 минут. Токены модели не расходуются. Нужен macOS 13+ и Claude Code, в котором выполнен вход.

@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 import AppKit
 import ServiceManagement
 import UserNotifications
@@ -173,15 +174,15 @@ final class Store: ObservableObject {
     }
 
     /// Primary source is Claude Code's own cache in ~/.claude.json — no requests at all.
-    /// The API is called only when that data is stale (10 min, or 1 min for the Refresh button),
-    /// at most every 5 min (1 min for the button), and never during a 429 backoff pause.
+    /// The API is called only when that data is older than 5 min (1 min for the Refresh button),
+    /// at most once per that interval, and never during a 429 backoff pause.
     func refresh(manual: Bool = false) {
         if let (usage, date) = readClaudeCodeCache(), date > (updated ?? .distantPast) {
             apply(usage, at: date)
         }
         let now = Date()
         let interval: TimeInterval = manual ? 60 : 300
-        if let updated, now.timeIntervalSince(updated) < (manual ? 60 : 600) { return }
+        if let updated, now.timeIntervalSince(updated) < interval { return }
         if isLoading { return }
         if let pausedUntil, now < pausedUntil {
             error = pauseMessage(pausedUntil)
@@ -410,18 +411,82 @@ struct ContentView: View {
 #if !SNAPSHOT
 @main
 struct ClaudeUsageApp: App {
-    @StateObject private var store = Store()
+    @NSApplicationDelegateAdaptor private var delegate: AppDelegate
 
     var body: some Scene {
-        MenuBarExtra {
-            ContentView(store: store)
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: store.symbol)
-                Text(store.label)
-            }
+        Settings { EmptyView() }
+    }
+}
+
+/// An AppKit status item instead of SwiftUI's MenuBarExtra: at login the item is created
+/// before the displays are configured, after which MenuBarExtra's item stayed invisible
+/// on an external monitor and its window opened in the top-left corner of the screen.
+/// MenuBarExtra(isInserted:) can't recreate the item (it never comes back), this can.
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    private let store = Store()
+    private let popover = NSPopover()
+    private var statusItem: NSStatusItem?
+    private var observers: [Any] = []
+    private var recreateWork: DispatchWorkItem?
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        let host = NSHostingController(rootView: ContentView(store: store))
+        host.sizingOptions = .preferredContentSize
+        popover.contentViewController = host
+        popover.behavior = .transient
+
+        createStatusItem()
+        observers.append(store.objectWillChange.sink { [weak self] _ in
+            DispatchQueue.main.async { self?.updateButton() }
+        })
+        recreateStatusItem(after: 5) // in case the displays were still being set up at login
+        for (center, name) in [
+            (NotificationCenter.default, NSApplication.didChangeScreenParametersNotification),
+            (NSWorkspace.shared.notificationCenter, NSWorkspace.didWakeNotification),
+        ] {
+            observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in self?.recreateStatusItem(after: 2) }
+            })
         }
-        .menuBarExtraStyle(.window)
+    }
+
+    private func createStatusItem() {
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        item.autosaveName = "ClaudeUsage" // keeps the position the user dragged it to
+        item.button?.imagePosition = .imageLeading
+        item.button?.target = self
+        item.button?.action = #selector(togglePopover)
+        statusItem = item
+        updateButton()
+    }
+
+    /// Debounced: display changes arrive in bursts.
+    private func recreateStatusItem(after delay: TimeInterval) {
+        recreateWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, !popover.isShown else { return }
+            if let statusItem { NSStatusBar.system.removeStatusItem(statusItem) }
+            createStatusItem()
+        }
+        recreateWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    private func updateButton() {
+        guard let button = statusItem?.button else { return }
+        button.image = NSImage(systemSymbolName: store.symbol, accessibilityDescription: "Claude Usage")
+        button.title = " " + store.label
+    }
+
+    @objc private func togglePopover() {
+        guard let button = statusItem?.button else { return }
+        if popover.isShown {
+            popover.performClose(nil)
+        } else {
+            NSApp.activate(ignoringOtherApps: true)
+            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        }
     }
 }
 #endif

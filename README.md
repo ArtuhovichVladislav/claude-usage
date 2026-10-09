@@ -33,7 +33,7 @@ On first launch macOS asks for permission to show notifications. Enable **Launch
 The app makes no requests to Claude models and uses no tokens. It reads data in this order:
 
 1. **Claude Code's cache.** Claude Code stores the latest usage response in `~/.claude.json` (`cachedUsageUtilization`). The app reads this file every minute and whenever the popover opens — no network requests.
-2. **Usage API as a fallback.** If the cached data is older than 10 minutes (for example, Claude Code is not running), the app calls `https://api.anthropic.com/api/oauth/usage` with the OAuth token Claude Code keeps in the Keychain (`Claude Code-credentials`). At most one request per 5 minutes; after HTTP 429 it backs off for 5 → 10 → 20 → 40 → 60 minutes.
+2. **Usage API as a fallback.** If the cached data is older than 5 minutes (for example, Claude Code is not running), the app calls `https://api.anthropic.com/api/oauth/usage` with the OAuth token Claude Code keeps in the Keychain (`Claude Code-credentials`). At most one request per 5 minutes; after HTTP 429 it backs off for 5 → 10 → 20 → 40 → 60 minutes. Normally the menu bar numbers are at most about 6 minutes old.
 
 The token is read via `/usr/bin/security`, is never written anywhere and is sent only to `api.anthropic.com`. The app never refreshes the token itself — if it has expired, just open Claude Code.
 
@@ -41,7 +41,7 @@ The token is read via `/usr/bin/security`, is never written anywhere and is sent
 
 | File | Purpose |
 | --- | --- |
-| `main.swift` | The whole app (SwiftUI `MenuBarExtra`) |
+| `main.swift` | The whole app (SwiftUI views in an AppKit status item popover) |
 | `build.sh` | Compiles with `swiftc` and assembles `ClaudeUsage.app` |
 | `make_icon.swift` | Draws the app icon; run `swift make_icon.swift && iconutil -c icns AppIcon.iconset` to regenerate `AppIcon.icns` |
 | `AppIcon.icns` | App icon |

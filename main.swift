@@ -151,19 +151,51 @@ final class Store: ObservableObject {
         #endif
     }
 
-    /// The most loaded limit — shown in the menu bar.
-    var top: Limit? { limits.max { $0.percent < $1.percent } }
+    /// The 5-hour limit — the only one shown in the menu bar (the weekly ones live in the
+    /// popover), so the number there never silently switches to another limit.
+    var session: Limit? { limits.first { $0.kind == "session" } }
 
     var label: String {
-        guard let top else { return error == nil ? "–" : "!" }
-        if let reset = top.shortReset { return "\(Int(top.percent))% · \(reset)" }
-        return "\(Int(top.percent))%"
+        guard let session else { return error == nil ? "–" : "!" }
+        if let reset = session.shortReset { return "\(Int(session.percent))% · \(reset)" }
+        return "\(Int(session.percent))%"
     }
 
-    var symbol: String {
-        let p = top?.percent ?? 0
-        let step = p >= 90 ? 100 : p >= 60 ? 67 : p >= 40 ? 50 : p >= 15 ? 33 : 0
-        return "gauge.with.dots.needle.\(step)percent"
+    /// Ring + label, drawn as one template image so the two are centered on each other
+    /// exactly (an SF Symbol next to the button title sat visibly off).
+    var menuBarImage: NSImage {
+        let font = NSFont.menuBarFont(ofSize: 0)
+        let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.black]
+        let label = label
+        let text = label as NSString
+        let ring: CGFloat = 14, line: CGFloat = 2, gap: CGFloat = 5, height: CGFloat = 18
+        let percent = min(session?.percent ?? 0, 100)
+        let size = NSSize(width: ring + gap + ceil(text.size(withAttributes: attrs).width), height: height)
+        let image = NSImage(size: size, flipped: false) { _ in
+            let center = NSPoint(x: ring / 2, y: height / 2)
+            let radius = (ring - line) / 2
+            let track = NSBezierPath()
+            track.appendArc(withCenter: center, radius: radius, startAngle: 0, endAngle: 360)
+            track.lineWidth = line
+            NSColor.black.withAlphaComponent(0.3).setStroke()
+            track.stroke()
+            if percent > 0 { // clockwise from 12 o'clock
+                let arc = NSBezierPath()
+                arc.appendArc(withCenter: center, radius: radius,
+                              startAngle: 90, endAngle: 90 - 360 * percent / 100, clockwise: true)
+                arc.lineWidth = line
+                arc.lineCapStyle = .round
+                NSColor.black.setStroke()
+                arc.stroke()
+            }
+            // Put the middle of the cap height (digits) on the ring's center
+            let baseline = (height - font.capHeight) / 2
+            text.draw(at: NSPoint(x: ring + gap, y: baseline + font.descender), withAttributes: attrs)
+            return true
+        }
+        image.isTemplate = true
+        image.accessibilityDescription = "Claude Usage " + label
+        return image
     }
 
     /// Whether the Refresh button would actually make a request right now.
@@ -401,10 +433,6 @@ struct ContentView: View {
         }
         .padding(16)
         .frame(width: 320)
-        // Fires every time the popover opens (onAppear may fire only once)
-        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
-            store.refresh()
-        }
     }
 }
 
@@ -429,6 +457,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var observers: [Any] = []
     private var recreateWork: DispatchWorkItem?
+    private var drawnState: String? // what the button image currently shows
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let host = NSHostingController(rootView: ContentView(store: store))
@@ -454,10 +483,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func createStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.autosaveName = "ClaudeUsage" // keeps the position the user dragged it to
-        item.button?.imagePosition = .imageLeading
         item.button?.target = self
         item.button?.action = #selector(togglePopover)
         statusItem = item
+        drawnState = nil
         updateButton()
     }
 
@@ -465,7 +494,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func recreateStatusItem(after delay: TimeInterval) {
         recreateWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
-            guard let self, !popover.isShown else { return }
+            guard let self else { return }
+            if popover.isShown { return recreateStatusItem(after: 2) }
             if let statusItem { NSStatusBar.system.removeStatusItem(statusItem) }
             createStatusItem()
         }
@@ -473,10 +503,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
+    /// Redraws only when the label or the ring would change: the store publishes much more
+    /// often (loading flag, the minute tick, errors).
     private func updateButton() {
-        guard let button = statusItem?.button else { return }
-        button.image = NSImage(systemSymbolName: store.symbol, accessibilityDescription: "Claude Usage")
-        button.title = " " + store.label
+        let state = "\(store.label) \(store.session?.percent ?? 0)"
+        guard state != drawnState, let button = statusItem?.button else { return }
+        drawnState = state
+        button.image = store.menuBarImage
     }
 
     @objc private func togglePopover() {
@@ -484,6 +517,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if popover.isShown {
             popover.performClose(nil)
         } else {
+            store.refresh()
             NSApp.activate(ignoringOtherApps: true)
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         }

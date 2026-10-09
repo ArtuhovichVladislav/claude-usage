@@ -9,11 +9,8 @@ struct SnapshotView: View {
     var body: some View {
         VStack(alignment: .trailing, spacing: 8) {
             // Menu bar item
-            HStack(spacing: 4) {
-                Image(systemName: store.symbol)
-                Text(store.label)
-            }
-            .font(.system(size: 13))
+            Image(nsImage: store.menuBarImage)
+                .foregroundStyle(.white)
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
             .background(RoundedRectangle(cornerRadius: 5).fill(Color.white.opacity(0.18)))
@@ -62,7 +59,12 @@ struct Snapshot {
         window.contentView = host
         host.layoutSubtreeIfNeeded()
 
-        let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds)!
+        // Always 2x, whatever the main display's scale
+        let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(host.bounds.width * 2),
+                                   pixelsHigh: Int(host.bounds.height * 2), bitsPerSample: 8,
+                                   samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                   colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+        rep.size = host.bounds.size
         host.cacheDisplay(in: host.bounds, to: rep)
         let out = CommandLine.arguments.first { $0.hasSuffix(".png") } ?? "screenshot.png"
         try! rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: out))

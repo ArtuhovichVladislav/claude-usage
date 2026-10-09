@@ -4,7 +4,7 @@ A tiny macOS menu bar app that shows your Claude plan usage — the same numbers
 
 <p align="center"><img src="screenshot.png" width="360" alt="Claude Usage popover"></p>
 
-- **Menu bar:** a gauge icon and the most loaded limit, e.g. `11% · 6d` (percent · time until reset)
+- **Menu bar:** a progress ring and the 5-hour limit, e.g. `32% · 1h` (percent · time until reset)
 - **Popover:** 5-hour limit, weekly limit for all models, per-model weekly limits (e.g. Fable) and extra usage, each with a progress bar
 - **Notifications** when a limit crosses 80% and 95% (once per limit window)
 - **Launch at login** checkbox

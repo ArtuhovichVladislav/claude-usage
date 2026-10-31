@@ -3,6 +3,7 @@ import Combine
 import AppKit
 import ServiceManagement
 import UserNotifications
+import os
 
 // MARK: - Localization
 
@@ -458,6 +459,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var observers: [Any] = []
     private var recreateWork: DispatchWorkItem?
     private var drawnState: String? // what the button image currently shows
+
+    /// AppKit calls applicationDidFinishLaunching only after the first Apple Event arrives.
+    /// As the first login item that event sometimes never comes, leaving the app running with
+    /// no menu bar item until it is opened by hand. Do the same "open" ourselves, minus focus.
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+            guard let self, statusItem == nil else { return }
+            Logger().notice("Launch did not finish (no open event), reopening")
+            let config = NSWorkspace.OpenConfiguration()
+            config.activates = false
+            NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: config)
+        }
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let host = NSHostingController(rootView: ContentView(store: store))
